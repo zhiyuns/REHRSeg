@@ -1,0 +1,30 @@
+data_path: ../../nnUNet/DATASET/nnUNet_raw/Dataset509_BoneTumor/imagesTr
+tmp_path: ./datasets/Brain_datasets/tmp
+checkpoint_path: ./checkpoints/Brain_datasets
+seg_path: ../../nnUNet/DATASET/nnUNet_results/Dataset509_BoneTumor/nnUNetTrainer__nnUNetPlans__3d_fullres
+
+# stage 1 configuration
+smore_initialization: True
+pretrain_path: ../../FLAVR/checkpoints/FLAVR_4x.pth
+batch_size_sr: 32
+lr_sr: 0.0005
+n_patches: 8320000
+save_iters_sr: 10000
+num_slices: 4
+patch_size: 96
+slice_thickness: 4.0
+target_thickness: 1.0
+blur_kernel: 'rf-pulse-slr'
+random_flip: True
+nnunet_transform: True
+enable_uncertainty: True
+
+# stage 2 configuration
+batch_size_segsr: 2
+lr_segsr: 1e-3
+epochs: 500
+save_iters_segsr: 500
+enable_distillation: True
+lambda_l1: 0.0
+lambda_cosine: 1.0
+lambda_structure: 1.0
