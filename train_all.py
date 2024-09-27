@@ -28,7 +28,7 @@ from utils.misc_utils import parse_device, LossProgBar
 from utils.blur_kernel_ops import calc_extended_patch_size, parse_kernel
 
 from utils.seg_utils import zscore_normalization, BCEDiceLoss, _build_loss, evaluate_case, calculate_dice
-from utils.sr_utils import inference_smore, inference_flavr, postprocess_smore
+from utils.sr_utils import inference_smore, inference_flavr, postprocess_smore, postprocess_flavr
 
 
 def merge_images_and_labels(main_dir, output_dir):
@@ -141,12 +141,14 @@ def train_sr(n_patches, batch_size, model, opt, scheduler, data_loader, device, 
                 # Progress bar update
                 pbar.update({"loss": loss, "lr": torch.Tensor([opt.param_groups[0]["lr"]])})
                 if total_iters>0 and total_iters % save_iters == 0:
-                    weight_path = weight_dir / f"weights_{total_iters}.pt"
+                    weight_path = os.path.join(weight_dir, f"weights_{total_iters}.pt")
                     torch.save({"model": model.state_dict()}, str(weight_path))
 
                 total_iters += 1
             if total_iters >= n_steps:
                 break
+    weight_path = os.path.join(weight_dir, "last_weights.pt")
+    torch.save({"model": model.state_dict()}, str(weight_path))
     return 
 
 def evaluate(model_seg, patch_size_ori, val_img_path, val_label_path, split_path, fold, save_path=None, eval_HR=False, seperation=1):
@@ -253,7 +255,7 @@ def main(
     if fold is None:
         split_data = os.listdir(data_path)
     else:
-        split_path = os.path.join(os.pardir(seg_path).replace('nnUNet_results', 'nnUNet_preprocessed'), 'splits_final.json')
+        split_path = os.path.join(os.path.dirname(seg_path).replace('nnUNet_results', 'nnUNet_preprocessed'), 'splits_final.json')
         with open(split_path, 'r') as f:
             split_data = json.load(f)[fold]['train']
     loss_obj = torch.nn.L1Loss().to(device)
@@ -268,36 +270,43 @@ def main(
             num_channels=32,
             scale=slice_separation,
         ).to(device)
-        opt = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99), lr=lr_sr)
+    
+        if os.path.exists(os.path.join(smore_checkpoint_path, "last_weights.pt")):
+            print(f"\n{text_div} NETWORK SMORE TRAINED, LOADING LAST WEIGHTS {text_div}\n")
+            model.load_state_dict(torch.load(os.path.join(smore_checkpoint_path, "last_weights.pt"), map_location='cpu')['model'])
+        else:
+            print(f"\n{text_div} TRAINING NETWORK SMORE {text_div}\n")
+            opt = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99), lr=lr_sr)
         
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer=opt,
-            max_lr=lr_sr,
-            total_steps=n_steps,
-            cycle_momentum=True,
-        )
-        patch_size = model.calc_out_patch_size(lr_patch_size)
-        train_dataset = TrainSetMultiple(merge_data_path, split_data, slice_thickness, target_thickness, 
-                                     None, blur_kernel, patch_size, random_flip, 
-                                     device, preload=True, blur=True, nnunet_transform=False)
-        data_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size_sr,
-            shuffle=True,
-            drop_last=True,
-            pin_memory=True,
-            num_workers=4,
-        )
-        
-        opt.step()  # necessary for the LR scheduler
-        print(f"\n{text_div} TRAINING NETWORK SMORE {text_div}\n")
-        train_sr(n_patches, batch_size_sr, model, opt, scheduler, data_loader, device, 
-                 loss_obj, loss_seg, n_steps, slice_separation, 1, False, 
-                 smore_checkpoint_path, save_iters_sr)
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer=opt,
+                max_lr=lr_sr,
+                total_steps=n_steps,
+                cycle_momentum=True,
+            )
+            patch_size = model.calc_out_patch_size(lr_patch_size)
+            train_dataset = TrainSetMultiple(merge_data_path, split_data, slice_thickness, target_thickness, 
+                                        None, blur_kernel, patch_size, random_flip, 
+                                        device, preload=True, blur=True, nnunet_transform=False)
+            data_loader = DataLoader(
+                train_dataset,
+                batch_size=batch_size_sr,
+                shuffle=True,
+                drop_last=True,
+                pin_memory=True,
+                num_workers=0,
+            )
+            
+            opt.step()  # necessary for the LR scheduler
+            train_sr(n_patches, batch_size_sr, model, opt, scheduler, data_loader, device, 
+                    loss_obj, loss_seg, n_steps, slice_separation, 1, False, 
+                    smore_checkpoint_path, save_iters_sr)
         model.eval()
         smore_output_path = os.path.join(tmp_path, "smore_output")
+        os.makedirs(smore_output_path, exist_ok=True)
         print(f"\n{text_div} INFERENCE NETWORK SMORE {text_div}\n")
         for subject in tqdm(os.listdir(merge_data_path)):
+            if os.path.exists(os.path.join(data_merged_sr_h5_path, subject + '.h5')): continue
             inference_smore(model, 'img+seg', os.path.join(merge_data_path, subject), os.path.join(data_path, subject), os.path.join(smore_output_path, subject),
                             slice_thickness, target_thickness, device)
             img_hr, label_hr, image_x_rgb, image_y_rgb = postprocess_smore(subject, slice_separation, None, smore_output_path)
@@ -308,13 +317,13 @@ def main(
                 f.create_dataset('image_y_rgb', data=image_y_rgb)
     else:
         for subject in tqdm(os.listdir(merge_data_path)):
+            if os.path.exists(os.path.join(data_merged_sr_h5_path, subject + '.h5')): continue
             img_hr, label_hr, image_x_rgb, image_y_rgb = postprocess_smore(subject, slice_separation, merge_data_path, None)
             with h5py.File(os.path.join(data_merged_sr_h5_path, subject + '.h5'), 'w') as f:
                 f.create_dataset('img_hr', data=img_hr)
                 f.create_dataset('label_hr', data=label_hr)
                 f.create_dataset('image_x_rgb', data=image_x_rgb)
                 f.create_dataset('image_y_rgb', data=image_y_rgb)
-    
     
     n_steps = int(ceil(n_patches / batch_size_sr))
     slice_separation = float(slice_thickness / target_thickness)
@@ -331,7 +340,7 @@ def main(
     ).to(device)
 
     if pretrain_path is not None:
-        pretrained_dict = torch.load(pretrain_path)
+        pretrained_dict = torch.load(pretrain_path, map_location='cpu')
         pretrained_dict = pretrained_dict['state_dict']
         for key in list(pretrained_dict.keys()):
             if "module" in key:
@@ -363,11 +372,41 @@ def main(
     )
 
     opt.step()  # necessary for the LR scheduler
-    print(f"\n{text_div} TRAINING NETWORK FLAVR {text_div}\n")
-    train_sr(n_patches, batch_size_sr, model, opt, scheduler, data_loader, device, 
-                loss_obj, loss_seg, n_steps, slice_separation, num_slices, False, 
-                flavr_checkpoint_path, save_iters_sr)
+    if os.path.exists(os.path.join(flavr_checkpoint_path, "last_weights.pt")):
+        print(f"\n{text_div} NETWORK FLAVR TRAINED, LOADING LAST WEIGHTS {text_div}\n")
+        pretrained_dict = torch.load(os.path.join(flavr_checkpoint_path, "last_weights.pt"), map_location='cpu')['model']
+        for key in list(pretrained_dict.keys()):
+            if "module" in key:
+                    pretrained_dict[key.replace("module.", "")] = pretrained_dict.pop(key)
+        model.load_state_dict(pretrained_dict, strict=False)
+    else:
+        print(f"\n{text_div} TRAINING NETWORK FLAVR {text_div}\n")
+        train_sr(n_patches, batch_size_sr, model, opt, scheduler, data_loader, device, 
+                    loss_obj, loss_seg, n_steps, slice_separation, num_slices, False, 
+                    flavr_checkpoint_path, save_iters_sr)
+    model.eval()
+    print(f"\n{text_div} INFERENCE NETWORK FLAVR {text_div}\n")
+    for subject in tqdm(os.listdir(merge_data_path)):
+        inference_flavr(model, 'img+seg', os.path.join(merge_data_path, subject), os.path.join(data_path, subject), os.path.join(flavr_output_path, subject),
+                        slice_thickness, target_thickness, device, False)
+    
     if enable_uncertainty:
+        flavr_uncertainty_checkpoint_path = os.path.join(checkpoint_path, 'flavr_uncertainty')
+        model = UNet_3D_3D(
+            img_channels=2,
+            block="unet_18",
+            n_inputs=num_slices,
+            n_outputs=int(slice_separation),
+            batchnorm=False,
+            joinType="concat",
+            upmode="transpose",
+            use_uncertainty=True
+        ).to(device)
+        pretrained_dict = torch.load(os.path.join(flavr_uncertainty_checkpoint_path, "last_weights.pt"), map_location='cpu')['model']
+        for key in list(pretrained_dict.keys()):
+            if "module" in key:
+                    pretrained_dict[key.replace("module.", "")] = pretrained_dict.pop(key)
+        model.load_state_dict(pretrained_dict)
         state_dict = model.state_dict()
         model = UNet_3D_3D(
             img_channels=2,
@@ -401,18 +440,21 @@ def main(
         print(f"\n{text_div} TRAINING NETWORK FLAVR WITH UNCERTAINTY {text_div}\n")
         train_sr(n_patches, batch_size_sr, model, opt, scheduler, data_loader, device, 
                     loss_obj, loss_seg, 20000, slice_separation, num_slices, True, 
-                    flavr_checkpoint_path, save_iters_sr)
-    print(f"\n{text_div} INFERENCE NETWORK FLAVR {text_div}\n")
-    model.eval()
+                    flavr_uncertainty_checkpoint_path, save_iters_sr)
+        print(f"\n{text_div} INFERENCE NETWORK FLAVR WITH UNCERTAINTY {text_div}\n")
+        model.eval()
+        os.makedirs(flavr_output_path, exist_ok=True)
+        for subject in tqdm(os.listdir(merge_data_path)):
+            inference_flavr(model, 'uncertainty', os.path.join(merge_data_path, subject), os.path.join(data_path, subject), os.path.join(flavr_output_path, subject),
+                            slice_thickness, target_thickness, device, True)
+
     for subject in tqdm(os.listdir(merge_data_path)):
-        inference_flavr(model, 'img+seg', os.path.join(merge_data_path, subject), os.path.join(data_path, subject), os.path.join(flavr_output_path, subject),
-                        slice_thickness, target_thickness, device, True)
-        image, seg, uncertainty = postprocess_smore(subject, slice_separation, flavr_output_path)
-        with h5py.File(os.path.join(data_merged_segsr_h5_path, subject + '.h5'), 'w') as f:
+        image, seg, uncertainty = postprocess_flavr(subject, slice_separation, flavr_output_path)
+        with h5py.File(os.path.join(data_merged_segsr_h5_path, subject.replace('.nii.gz', '.h5')), 'w') as f:
             f.create_dataset('img', data=image)
             f.create_dataset('seg', data=seg)
             f.create_dataset('uncertainty', data=uncertainty)
-
+    
     # Stage 2 training
     print(f"\n{text_div} TRAINING NETWORK REHRSeg {text_div}\n")
     plan_file = os.path.join(seg_path, 'plans.json')
@@ -461,7 +503,6 @@ def main(
     separated_params = separate_weight_extensive_params(model_seg, False, lr_segsr)
     if enable_distillation:
         separated_params = itertools.chain(model_seg.parameters(), distiller.parameters())
-        # separated_params[0]['params'] = list(separated_params[0]['params']) + list(distiller_1.parameters()) + list(distiller_2.parameters())
     opt = torch.optim.SGD(separated_params, lr=lr_segsr, momentum=0.99, nesterov=True, weight_decay = 3e-5)
     lr_scheduler = PolynomialLR(opt, total_iters=epochs)
 

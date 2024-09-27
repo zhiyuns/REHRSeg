@@ -57,7 +57,6 @@ def inference_smore(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickn
         image_rot = image_rot.permute(0, 3, 2, 1)  # No need to unsqueeze(1) here
         # Run model
         rot_result = apply_to_vol_smore(model, image_rot, 1)
-        #print("Shape of rot_result:", rot_result.shape)
         # Return to (hr_axis, hr_axis, lr_axis)
         result = rot_result.permute(0, 3, 1, 2)
         model_preds.append(rotate_vol_2d(result, 0))
@@ -73,7 +72,7 @@ def inference_smore(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickn
     final_out = z_axis_to_lr_axis(final_out, lr_axis)
     final_out = final_out.transpose(0, 3, 2, 1)[:,:,:,::-1]
 
-    ref_img = sitk.ReadImage(ref_fpath.replace('.nii.gz', '_0000.nii.gz'))
+    ref_img = sitk.ReadImage(ref_fpath)
     spacing = ref_img.GetSpacing()
     origin = ref_img.GetOrigin()
     direction = ref_img.GetDirection()
@@ -82,7 +81,7 @@ def inference_smore(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickn
     final_out_img.SetSpacing((spacing[0], spacing[1], spacing[2]/slice_separation))
     final_out_img.SetOrigin(origin)
     final_out_img.SetDirection(direction)
-    ref_img = sitk.ReadImage(ref_fpath.replace('.nii.gz', '_0000.nii.gz'))
+    ref_img = sitk.ReadImage(ref_fpath)
     output_file = out_fpath.replace(".nii.gz", "_img.nii.gz")
     sitk.WriteImage(final_out_img, output_file)
 
@@ -137,7 +136,7 @@ def apply_to_vol_flavr(model, image, pred_out_idx=None):
 
 def inference_flavr(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickness, target_thickness, device, enable_uncertainty):
     image, slice_separation, lr_axis, _, _, _, orig_min, orig_max = parse_image(
-        in_fpath, slice_thickness, target_thickness
+            in_fpath, slice_thickness, target_thickness
     )
     image = lr_axis_to_z(image, lr_axis)
     # pad the number of slices out so we achieve the correct final resolution
@@ -145,64 +144,63 @@ def inference_flavr(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickn
     n_slices_crop = calc_slices_to_crop(n_slices_pad, slice_separation)
     image = np.pad(image, ((0, 0), (0, 0), (0, n_slices_pad), (0, 0)), mode="reflect")
     image = torch.from_numpy(image)
-    if sr_mode == 'img':
-        image = image[...,0:1]
-    elif sr_mode == 'seg':
-        image = image[...,1:]
-
-    angles = [0]
-    model_preds = []
-
-    for i, angle in enumerate(angles):
-        # Rotate in-plane. Image starts as (hr_axis, hr_axis, lr_axis)
-        image_rot = rotate_vol_2d(image.to(device), angle)
-        # Ensure the LR axis is s.t. (hr_axis, C, lr_axis, hr_axis)
-        image_rot = image_rot.permute(0, 3, 2, 1)  # No need to unsqueeze(1) here
-
-        # Run model
-        rot_result = apply_to_vol_flavr(model, image_rot, 0)
-        # Return to (hr_axis, hr_axis, lr_axis)
-        result = rot_result.permute(0, 3, 1, 2)
-        model_preds.append(rotate_vol_2d(result, -angle))
-
-    # ===== FINALIZE =====
-    final_out = torch.mean(torch.stack(model_preds), dim=0)
-    final_out = final_out.detach().cpu().numpy().astype(np.float32)
-    final_out = inv_normalize(final_out, orig_min, orig_max, a=0, b=1)
-
-    # Re-crop to target shape
-    if n_slices_crop != 0:
-        final_out = final_out[:, :, :-n_slices_crop]
-    # Reorient to original orientation
-    final_out = z_axis_to_lr_axis(final_out, lr_axis)
-
-    ref_img = sitk.ReadImage(ref_fpath.replace('.nii.gz', '_0000.nii.gz'))
+    ref_img = sitk.ReadImage(ref_fpath)
     spacing = ref_img.GetSpacing()
     origin = ref_img.GetOrigin()
     direction = ref_img.GetDirection()
+    if 'img' in sr_mode or 'seg' in sr_mode:
+        if sr_mode == 'img':
+            image = image[...,0:1]
+        elif sr_mode == 'seg':
+            image = image[...,1:]
 
-    final_out_img = sitk.GetImageFromArray(final_out[0])
-    final_out_img.SetSpacing((spacing[0], spacing[1], spacing[2]/slice_separation))
-    final_out_img.SetOrigin(origin)
-    final_out_img.SetDirection(direction)
-    output_file = out_fpath.replace(".nii.gz", "_img.nii.gz")
-    sitk.WriteImage(final_out_img, output_file)
+        angles = [0]
+        model_preds = []
 
-    final_out_seg = final_out[1]
-    final_out_seg[final_out_seg>0] = 1
-    final_out_seg[final_out_seg<0] = 0
-    final_out_seg = sitk.GetImageFromArray(final_out_seg.astype('uint8'))
-    final_out_seg.SetSpacing((spacing[0], spacing[1], spacing[2]/slice_separation))
-    final_out_seg.SetOrigin(origin)
-    final_out_seg.SetDirection(direction)
-    output_file = out_fpath.replace(".nii.gz", "_seg.nii.gz")
-    sitk.WriteImage(final_out_seg, output_file)
+        for i, angle in enumerate(angles):
+            # Rotate in-plane. Image starts as (hr_axis, hr_axis, lr_axis)
+            image_rot = rotate_vol_2d(image.to(device), angle)
+            # Ensure the LR axis is s.t. (hr_axis, C, lr_axis, hr_axis)
+            image_rot = image_rot.permute(0, 3, 2, 1)  # No need to unsqueeze(1) here
+
+            # Run model
+            rot_result = apply_to_vol_flavr(model, image_rot, 0)
+            # Return to (hr_axis, hr_axis, lr_axis)
+            result = rot_result.permute(0, 3, 1, 2)
+            model_preds.append(rotate_vol_2d(result, -angle))
+
+        # ===== FINALIZE =====
+        final_out = torch.mean(torch.stack(model_preds), dim=0)
+        final_out = final_out.detach().cpu().numpy().astype(np.float32)
+        final_out = inv_normalize(final_out, orig_min, orig_max, a=0, b=1)
+
+        # Re-crop to target shape
+        if n_slices_crop != 0:
+            final_out = final_out[:, :, :-n_slices_crop]
+        # Reorient to original orientation
+        final_out = z_axis_to_lr_axis(final_out, lr_axis)
+
+        final_out_img = sitk.GetImageFromArray(final_out[0])
+        final_out_img.SetSpacing((spacing[0], spacing[1], spacing[2]/slice_separation))
+        final_out_img.SetOrigin(origin)
+        final_out_img.SetDirection(direction)
+        output_file = out_fpath.replace(".nii.gz", "_img.nii.gz")
+        sitk.WriteImage(final_out_img, output_file)
+
+        final_out_seg = final_out[1]
+        final_out_seg[final_out_seg>0] = 1
+        final_out_seg[final_out_seg<0] = 0
+        final_out_seg = sitk.GetImageFromArray(final_out_seg.astype('uint8'))
+        final_out_seg.SetSpacing((spacing[0], spacing[1], spacing[2]/slice_separation))
+        final_out_seg.SetOrigin(origin)
+        final_out_seg.SetDirection(direction)
+        output_file = out_fpath.replace(".nii.gz", "_seg.nii.gz")
+        sitk.WriteImage(final_out_seg, output_file)
 
     if enable_uncertainty:
         angles = [0]
         model_preds = []
 
-        print("Angles:", angles)
         for i, angle in enumerate(angles):
             # Rotate in-plane. Image starts as (hr_axis, hr_axis, lr_axis)
             image_rot = rotate_vol_2d(image.to(device), angle)
@@ -282,11 +280,11 @@ def zeroonenorm(data):
     return data
 
 def postprocess_flavr(subject, slice_seperation=4, sr_path=None):
-    sr_image, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
+    image, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
         os.path.join(sr_path, subject.replace('.nii.gz', '_img.nii.gz')), slice_seperation, 1.0
     )
     image = zeroonenorm(image)
-    sr_label, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
+    label, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
         os.path.join(sr_path, subject.replace('.nii.gz', '_seg.nii.gz')), slice_seperation, 1.0
     )
     if os.path.exists(os.path.join(sr_path, subject.replace('_img', '_uncertainty'))):
@@ -295,10 +293,10 @@ def postprocess_flavr(subject, slice_seperation=4, sr_path=None):
         )
         uncertainty = (zeroonenorm(uncertainty) * 255.0).astype('uint8')
     else:
-        uncertainty = np.zeros_like(sr_label)
+        uncertainty = np.zeros_like(label)
 
     blur_kernel = parse_kernel(None, 'rf-pulse-slr', blur_fwhm)
     image_torch = torch.from_numpy(image.transpose(2, 0, 1)).unsqueeze(1) # z, x, y
-    image_torch_blurred = F.conv2d(image_torch, blur_kernel, padding="same").numpy()
+    image_torch_blurred = F.conv2d(image_torch, blur_kernel, padding="same").squeeze(1).numpy()
     image = image_torch_blurred.transpose(1, 2, 0)
-    return image, sr_label, uncertainty
+    return image, label, uncertainty

@@ -143,7 +143,7 @@ class UNet_3D_3D(nn.Module):
         )
 
         self.feature_fuse = Conv_2d(nf[3]*n_inputs , nf[3]*n_inputs if use_uncertainty else nf[3], kernel_size=3 , stride=1, padding=1, batchnorm=batchnorm, bias=nn.InstanceNorm2d)
-        self.feature_fuse1 = Conv_2d(nf[3]*n_inputs , nf[3]*img_channels , kernel_size=1 , stride=1, batchnorm=batchnorm, bias=nn.InstanceNorm2d)
+        self.feature_fuse1 = Conv_2d(nf[3]*n_inputs , nf[3]*img_channels, kernel_size=1, stride=1, batchnorm=batchnorm, bias=nn.InstanceNorm2d)
         self.tanh = torch.nn.Tanh()
         if self.use_uncertainty:
             self.uncertainty_early = Conv_2d(nf[3]*n_inputs , nf[3] , kernel_size=1 , stride=1, batchnorm=batchnorm, bias=nn.InstanceNorm2d)
@@ -156,7 +156,7 @@ class UNet_3D_3D(nn.Module):
         )
 
     def calc_out_patch_size(self, input_patch_size):
-        x = torch.rand([1, self.img_channels] + input_patch_size).float()
+        x = torch.rand(tuple([1, self.img_channels] + input_patch_size)).float()
         x = x.to(next(self.parameters()).device)
         if self.use_uncertainty:
             out, _ = self(x)

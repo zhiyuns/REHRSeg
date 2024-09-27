@@ -102,7 +102,6 @@ def lr_axis_to_z(img, lr_axis):
     Orient the image volume such that the low-resolution axis
     is in the "z" axis.
     """
-    print("img", img.shape)
     if img.ndim == 5:
         # img = np.squeeze(img, axis=4)
         img = np.squeeze(img)
