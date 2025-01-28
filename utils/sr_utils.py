@@ -243,6 +243,7 @@ def inference_flavr(model, sr_mode, in_fpath, ref_fpath, out_fpath, slice_thickn
 
 def postprocess_smore(subject, slice_seperation=4, data_path=None, sr_path=None):
     if sr_path is not None:
+        # use smore to interpolate the image
         sr_image, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
             os.path.join(sr_path, subject.replace('.nii.gz', '_img.nii.gz')), slice_seperation, 1.0
         )
@@ -253,6 +254,7 @@ def postprocess_smore(subject, slice_seperation=4, data_path=None, sr_path=None)
         sr_label = sr_label[..., np.newaxis]
         image = np.concatenate([sr_image, sr_label], axis=-1)
     else:
+        # use traditional method to interpolate the image
         image, slice_separation, _,  blur_fwhm, _, _, _, _ = parse_image(
             os.path.join(data_path, subject), slice_seperation, 1.0
         )

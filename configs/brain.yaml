@@ -22,7 +22,7 @@ enable_uncertainty: True
 # stage 2 configuration
 batch_size_segsr: 2
 lr_segsr: 1e-3
-epochs: 500
+epochs: 200
 save_iters_segsr: 500
 enable_distillation: True
 lambda_l1: 0.0

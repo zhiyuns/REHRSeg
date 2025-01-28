@@ -222,6 +222,7 @@ def main(
     fold: int,
     **kwargs
 ):
+    # setting up everything
     if not Path(data_path).exists():
         raise ValueError("Input image path does not exist.")
     if not Path(seg_path).exists():
@@ -250,7 +251,7 @@ def main(
     os.makedirs(merge_data_path, exist_ok=True)
     merge_images_and_labels(data_path, merge_data_path)
 
-    # Stage 1 training
+    # Stage 1 training (flavr [and smore if use smore initialization])
     print(f"{text_div} BEGIN TRAINING STAGE ONE {text_div}")
     if fold is None:
         split_data = os.listdir(data_path)
@@ -272,9 +273,11 @@ def main(
         ).to(device)
     
         if os.path.exists(os.path.join(smore_checkpoint_path, "last_weights.pt")):
+            # directly inference, incase of resuming training
             print(f"\n{text_div} NETWORK SMORE TRAINED, LOADING LAST WEIGHTS {text_div}\n")
             model.load_state_dict(torch.load(os.path.join(smore_checkpoint_path, "last_weights.pt"), map_location='cpu')['model'])
         else:
+            # train from scratch
             print(f"\n{text_div} TRAINING NETWORK SMORE {text_div}\n")
             opt = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99), lr=lr_sr)
         
@@ -316,6 +319,7 @@ def main(
                 f.create_dataset('image_x_rgb', data=image_x_rgb)
                 f.create_dataset('image_y_rgb', data=image_y_rgb)
     else:
+        # use traditional method to interpolate the images
         for subject in tqdm(os.listdir(merge_data_path)):
             if os.path.exists(os.path.join(data_merged_sr_h5_path, subject + '.h5')): continue
             img_hr, label_hr, image_x_rgb, image_y_rgb = postprocess_smore(subject, slice_separation, merge_data_path, None)
@@ -325,6 +329,7 @@ def main(
                 f.create_dataset('image_x_rgb', data=image_x_rgb)
                 f.create_dataset('image_y_rgb', data=image_y_rgb)
     
+    # initialize the flavr model
     n_steps = int(ceil(n_patches / batch_size_sr))
     slice_separation = float(slice_thickness / target_thickness)
     lr_patch_size = [num_slices, patch_size, patch_size]
@@ -337,7 +342,7 @@ def main(
         joinType="concat",
         upmode="transpose",
         use_uncertainty=False
-    ).to(device)
+    )
 
     if pretrain_path is not None:
         pretrained_dict = torch.load(pretrain_path, map_location='cpu')
@@ -350,6 +355,7 @@ def main(
         
         model.load_state_dict(pretrained_dict, strict=False)
 
+    model = model.to(device)
     opt = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99), lr=lr_sr)
     
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -491,6 +497,7 @@ def main(
     checkpoint_seg = torch.load(resume_seg_path, map_location=torch.device('cpu'))
     parameter_seg = checkpoint_seg['network_weights'] if 'network_weights' in checkpoint_seg else checkpoint_seg['model']
     model_seg.load_state_dict(parameter_seg, strict=False)
+    # this dataset should be used for stage-2 training
     train_dataset = TrainSetMultipleSegSREfficient(data_merged_segsr_h5_path, split_data, slice_thickness, target_thickness, patch_size_ori, patch_size, random_flip, enable_uncertainty)
     data_loader = DataLoader(
         train_dataset,

@@ -97,10 +97,7 @@ thop==0.1.1.post2209072238
 threadpoolctl==3.5.0
 tifffile==2024.5.22
 tomli==2.0.1
-torch==2.1.2+cu118
-torchaudio==2.1.2+cu118
 torchstat==0.0.7
-torchvision==0.16.2+cu118
 tqdm==4.65.2
 traceback2==1.4.0
 transforms3d==0.4.1
