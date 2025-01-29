@@ -19,7 +19,7 @@ This repository is built upon [nnUNet](https://github.com/MIC-DKFZ/nnUNet) and [
 
 * We recommend Linux for performance and compatibility reasons.
 * 1 high-end NVIDIA GPU with at least 24 GB of memory.
-* 64-bit Python 3.9 and PyTorch 2.1.2. See [https://pytorch.org/](https://pytorch.org/) for PyTorch install instructions. One way to install Pytorch 1.9.1, which has been verify by the author, is:
+* 64-bit Python 3.9 and PyTorch 2.1.2. See [https://pytorch.org/](https://pytorch.org/) for PyTorch install instructions. One way to install Pytorch 2.1.2, which has been verify by the author, is:
 `pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118`
 *  Other dependencies: `pip install -r requirements.txt`
 
