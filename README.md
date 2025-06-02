@@ -27,7 +27,8 @@ This repository is built upon [nnUNet](https://github.com/MIC-DKFZ/nnUNet) and [
 
 ### Dataset Downloading
 The original Meningioma-SEG-CLASS dataset is available at [https://www.cancerimagingarchive.net/collection/meningioma-seg-class](https://www.cancerimagingarchive.net/collection/meningioma-seg-class)
-You can also download the preprocessed dataset (after normalization, reformatting, and downsampling) in the following link
+
+Due to the region availability, you can also download the preprocessed dataset (after normalization, reformatting, and downsampling) in the following link:
 
 #### Google Drive
 Link: [https://drive.google.com/drive/folders/1uqcp5dhKgF1xrvOpYvj0Nl-Fsg4RaMEh?usp=drive_link](https://drive.google.com/drive/folders/1uqcp5dhKgF1xrvOpYvj0Nl-Fsg4RaMEh?usp=drive_link)
