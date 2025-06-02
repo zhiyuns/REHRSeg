@@ -25,11 +25,31 @@ This repository is built upon [nnUNet](https://github.com/MIC-DKFZ/nnUNet) and [
 
 ## Preparing
 
+### Dataset Downloading
+The original Meningioma-SEG-CLASS dataset is available at [https://www.cancerimagingarchive.net/collection/meningioma-seg-class](https://www.cancerimagingarchive.net/collection/meningioma-seg-class)
+You can also download the preprocessed dataset (after normalization, reformatting, and downsampling) in the following link
+
+#### Google Drive
+Link: [https://drive.google.com/drive/folders/1uqcp5dhKgF1xrvOpYvj0Nl-Fsg4RaMEh?usp=drive_link](https://drive.google.com/drive/folders/1uqcp5dhKgF1xrvOpYvj0Nl-Fsg4RaMEh?usp=drive_link)
+
+#### Baidu Netdisk
+Link：[https://pan.baidu.com/s/1y0LbeVthbI1SEtkx0js3HQ](https://pan.baidu.com/s/1y0LbeVthbI1SEtkx0js3HQ)
+Extraction Code (提取码)：beed  
+
+where
+- Meningioma.tgz is the original dataset
+- Meningioma_converted_preprocessed.zip is the preprocessed high-resolution dataset
+- Meningioma_converted_preprocessed_lr.zip is the downsampled low-resolution dataset
+
+### Dataset Preparation
+
 We use [nnUNet](https://github.com/MIC-DKFZ/nnUNet) for the preparation of dataset and initializing nnUNet. For example, our codes to prepare the Meningioma-SEG-CLASS dataset are:
 ```.bash
 nnUNetv2_plan_and_preprocess -d 509 --verify_dataset_integrity
 nnUNetv2_train 509 3d_fullres all
 ```
+
+### Pretrained Weight
 
 Please also prepare the pretrained FLAVR model to initialize the super-resolution process:
 ```.bash
